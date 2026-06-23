@@ -1,0 +1,249 @@
+import json
+import pandas as pd
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename, asksaveasfilename
+from openpyxl import load_workbook
+from openpyxl.styles import Font
+
+# ---------------------------------------
+# Select JSON File
+# ---------------------------------------
+
+Tk().withdraw()
+
+json_file = askopenfilename(
+    title="Select GSTR-1 JSON File",
+    filetypes=[("JSON Files", "*.json")]
+)
+
+if not json_file:
+    print("No file selected.")
+    exit()
+
+# ---------------------------------------
+# Load JSON
+# ---------------------------------------
+
+with open(json_file, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+# ---------------------------------------
+# Helper
+# ---------------------------------------
+
+writer_path = asksaveasfilename(
+    defaultextension=".xlsx",
+    filetypes=[("Excel Workbook", "*.xlsx")],
+    title="Save Excel File"
+)
+
+writer = pd.ExcelWriter(writer_path, engine="openpyxl")
+
+# ---------------------------------------
+# B2B
+# ---------------------------------------
+
+rows = []
+
+for ctin in data.get("b2b", []):
+    buyer = ctin.get("ctin")
+
+    for inv in ctin.get("inv", []):
+
+        for itm in inv.get("itms", []):
+
+            det = itm.get("itm_det", {})
+
+            rows.append({
+
+                "Buyer GSTIN": buyer,
+                "Invoice Number": inv.get("inum"),
+                "Invoice Date": inv.get("idt"),
+                "Invoice Value": inv.get("val"),
+                "Reverse Charge": inv.get("rchrg"),
+                "Invoice Type": inv.get("inv_typ"),
+                "POS": inv.get("pos"),
+                "Item Number": itm.get("num"),
+                "Taxable Value": det.get("txval"),
+                "Rate": det.get("rt"),
+                "IGST": det.get("iamt"),
+                "CGST": det.get("camt"),
+                "SGST": det.get("samt"),
+                "CESS": det.get("csamt")
+            })
+
+pd.DataFrame(rows).to_excel(writer, sheet_name="B2B", index=False)
+
+# ---------------------------------------
+# B2CL
+# ---------------------------------------
+
+rows=[]
+
+for inv in data.get("b2cl",[]):
+
+    for itm in inv.get("itms",[]):
+
+        det=itm.get("itm_det",{})
+
+        rows.append({
+
+            "Invoice Number":inv.get("inum"),
+            "Invoice Date":inv.get("idt"),
+            "Invoice Value":inv.get("val"),
+            "POS":inv.get("pos"),
+            "Taxable Value":det.get("txval"),
+            "Rate":det.get("rt"),
+            "IGST":det.get("iamt"),
+            "CESS":det.get("csamt")
+
+        })
+
+pd.DataFrame(rows).to_excel(writer,sheet_name="B2CL",index=False)
+
+# ---------------------------------------
+# B2CS
+# ---------------------------------------
+
+rows=[]
+
+for row in data.get("b2cs",[]):
+
+    rows.append(row)
+
+pd.DataFrame(rows).to_excel(writer,sheet_name="B2CS",index=False)
+
+# ---------------------------------------
+# CDNR
+# ---------------------------------------
+
+rows=[]
+
+for ctin in data.get("cdnr",[]):
+
+    gstin=ctin.get("ctin")
+
+    for note in ctin.get("nt",[]):
+
+        for itm in note.get("itms",[]):
+
+            det=itm.get("itm_det",{})
+
+            rows.append({
+
+                "GSTIN":gstin,
+                "Note Number":note.get("nt_num"),
+                "Date":note.get("nt_dt"),
+                "Type":note.get("ntty"),
+                "Value":note.get("val"),
+                "Taxable":det.get("txval"),
+                "Rate":det.get("rt"),
+                "IGST":det.get("iamt"),
+                "CGST":det.get("camt"),
+                "SGST":det.get("samt"),
+                "CESS":det.get("csamt")
+
+            })
+
+pd.DataFrame(rows).to_excel(writer,sheet_name="CDNR",index=False)
+
+# ---------------------------------------
+# CDNUR
+# ---------------------------------------
+
+rows=[]
+
+for note in data.get("cdnur",[]):
+
+    for itm in note.get("itms",[]):
+
+        det=itm.get("itm_det",{})
+
+        rows.append({
+
+            "UR Type":note.get("typ"),
+            "Note Number":note.get("nt_num"),
+            "Date":note.get("nt_dt"),
+            "Invoice Number":note.get("inum"),
+            "Invoice Date":note.get("idt"),
+            "Taxable":det.get("txval"),
+            "Rate":det.get("rt"),
+            "IGST":det.get("iamt"),
+            "CESS":det.get("csamt")
+
+        })
+
+pd.DataFrame(rows).to_excel(writer,sheet_name="CDNUR",index=False)
+
+# ---------------------------------------
+# Export
+# ---------------------------------------
+
+pd.DataFrame(data.get("exp",[])).to_excel(writer, sheet_name="Export", index=False)
+
+# ---------------------------------------
+# HSN
+# ---------------------------------------
+
+pd.DataFrame(data.get("hsn",{}).get("data",[])).to_excel(writer, sheet_name="HSN", index=False)
+
+# ---------------------------------------
+# Docs
+# ---------------------------------------
+
+rows=[]
+
+for d in data.get("docs",[]):
+
+    for doc in d.get("doc_det",[]):
+
+        r={
+
+            "Nature":d.get("doc_typ")
+
+        }
+
+        r.update(doc)
+
+        rows.append(r)
+
+pd.DataFrame(rows).to_excel(writer, sheet_name="Documents", index=False)
+
+# ---------------------------------------
+# Advance Tax
+# ---------------------------------------
+
+pd.DataFrame(data.get("at",[])).to_excel(writer, sheet_name="Advance Tax", index=False)
+
+# ---------------------------------------
+# Advance Adjustment
+# ---------------------------------------
+
+pd.DataFrame(data.get("atadj",[])).to_excel(writer, sheet_name="AT Adjustment", index=False)
+
+writer.close()
+
+# ---------------------------------------
+# Beautify Excel
+# ---------------------------------------
+
+wb=load_workbook(writer_path)
+
+for ws in wb.worksheets:
+
+    for cell in ws[1]:
+
+        cell.font=Font(bold=True)
+
+    for col in ws.columns:
+
+        length=max(len(str(c.value)) if c.value else 0 for c in col)
+
+        ws.column_dimensions[col[0].column_letter].width=length+4
+
+wb.save(writer_path)
+
+print("--------------------------------------")
+print("Excel successfully created.")
+print(writer_path)
+print("--------------------------------------")
